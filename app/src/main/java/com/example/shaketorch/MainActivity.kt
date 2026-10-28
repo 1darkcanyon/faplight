@@ -1,73 +1,58 @@
 package com.example.shaketorch
 
-import android.content.Context
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import android.hardware.camera2.CameraManager
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import kotlin.math.sqrt
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
-class MainActivity : AppCompatActivity(), SensorEventListener {
-
-    private lateinit var sensorManager: SensorManager
-    private lateinit var cameraManager: CameraManager
-    private lateinit var cameraId: String
-    private lateinit var status: TextView
-
-    private var torchOn = false
-    private var lastShake = 0L
-
-    // Tune these: higher threshold = harder shake needed
-    private val shakeThreshold = 14f   // m/s^2 above gravity
-    private val cooldownMs = 1000L
+class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        status = TextView(this).apply {
-            textSize = 24f
-            text = "Shake to toggle flashlight"
-            setPadding(48, 200, 48, 48)
+
+        val info = TextView(this).apply {
+            textSize = 20f
+            gravity = Gravity.CENTER
+            text = "Start the service, then shake your phone to toggle the flashlight. " +
+                "It keeps working with the screen off."
         }
-        setContentView(status)
+        val start = Button(this).apply {
+            text = "Start"
+            setOnClickListener { startShake() }
+        }
+        val stop = Button(this).apply {
+            text = "Stop"
+            setOnClickListener { stopService(Intent(this@MainActivity, ShakeService::class.java)) }
+        }
 
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        cameraId = cameraManager.cameraIdList.first()
-    }
+        setContentView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(48, 48, 48, 48)
+            addView(info)
+            addView(start)
+            addView(stop)
+        })
 
-    override fun onResume() {
-        super.onResume()
-        sensorManager.registerListener(
-            this,
-            sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
-            SensorManager.SENSOR_DELAY_UI
-        )
-    }
-
-    override fun onPause() {
-        super.onPause()
-        sensorManager.unregisterListener(this)
-    }
-
-    override fun onSensorChanged(e: SensorEvent) {
-        val (x, y, z) = e.values
-        val g = sqrt(x * x + y * y + z * z) - SensorManager.GRAVITY_EARTH
-        val now = System.currentTimeMillis()
-        if (g > shakeThreshold && now - lastShake > cooldownMs) {
-            lastShake = now
-            toggleTorch()
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1
+            )
         }
     }
 
-    private fun toggleTorch() {
-        torchOn = !torchOn
-        cameraManager.setTorchMode(cameraId, torchOn)
-        status.text = if (torchOn) "Flashlight ON" else "Flashlight OFF"
+    private fun startShake() {
+        ContextCompat.startForegroundService(this, Intent(this, ShakeService::class.java))
     }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 }
